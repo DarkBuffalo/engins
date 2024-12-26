@@ -1,0 +1,14 @@
+#+title: Gestion de suivi d'engins de chantier
+#+author: DarkBuffalo
+#+language: fr
+
+
+-----
+
+* Installation
+
+
+#+begin_src elisp
+  (use-package engins
+    :straight (:host github :repo "DarkBuffalo/engins"))
+#+end_src
