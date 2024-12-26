@@ -1,13 +1,13 @@
 ;;; engins.el --- Gestion des engins de chantier
 ;; Copyright (C) 2024
 
-;; Author: Votre Nom <votre@email.com>
-;; Maintainer: Votre Nom <votre@email.com>
+;; Author: DarkBuffalo <db@gnu.re>
+;; Maintainer: DarkBuffalo <db@gnu.re>
 ;; Created: 26 Dec 2024
 ;; Version: 1.0
 ;; Package-Requires: ((emacs "28.1") (sqlite "0.1"))
 ;; Keywords: tools
-;; URL: https://github.com/votre-compte/engins
+;; URL: https://github.com/DarkBuffalo/engins
 
 ;; This file is not part of GNU Emacs.
 
@@ -39,6 +39,7 @@
 (require 'sqlite)
 (require 'calendar)
 (require 'widget)
+(require 'tabulated-list)
 
 ;; Fonction de réinitialisation de la base
 (defun engins-reset-db ()
@@ -177,27 +178,62 @@
   (use-local-map widget-keymap)
   (widget-setup))
 
+
 (defun engins-ui-ajouter-chantier ()
   "Interface pour ajouter un nouveau chantier."
   (let ((nom (read-string "Nom du chantier: "))
         (adresse (read-string "Adresse: "))
-        (date-debut (format-time-string "%Y-%m-%d")))
+        (date-debut (org-read-date nil nil nil "Date de démmarage ?")))
     (engins-ajouter-chantier nom adresse date-debut)
     (message "Chantier ajouté avec succès !")))
 
+
+
+
+
+
+
+;;; Chantier via tabulated-list-mode
 (defun engins-ui-liste-chantiers ()
-  "Affiche la liste des chantiers."
-  (switch-to-buffer "*Liste Chantiers*")
-  (let ((inhibit-read-only t))
-    (erase-buffer))
-  (dolist (chantier (engins-liste-chantiers))
-    (insert (format "ID: %d | Nom: %s | Adresse: %s | Début: %s | Statut: %s\n"
-                   (nth 0 chantier)
-                   (nth 1 chantier)
-                   (nth 2 chantier)
-                   (nth 3 chantier)
-                   (nth 5 chantier))))
-  (local-set-key (kbd "q") 'kill-buffer))
+  "Affiche la liste des chantiers en utilisant `tabulated-list-mode`."
+  (interactive)
+  (let ((buffer (get-buffer-create "*Liste Chantiers*")))
+    (with-current-buffer buffer
+      (engins-liste-chantiers-mode)
+      (engins-liste-chantiers-refresh))
+    (switch-to-buffer buffer)))
+
+(define-derived-mode engins-liste-chantiers-mode tabulated-list-mode "Liste Chantiers"
+  "Mode majeur pour lister les chantiers."
+  (setq tabulated-list-format [("ID" 5 t)
+                               ("Nom" 20 t)
+                               ("Adresse" 30 t)
+                               ("Début" 12 t)
+                               ("Statut" 10 t)])
+  (setq tabulated-list-padding 2)
+  (setq tabulated-list-sort-key (cons "ID" nil))
+  (add-hook 'tabulated-list-revert-hook 'engins-liste-chantiers-refresh nil t)
+  (tabulated-list-init-header))
+
+(defun engins-liste-chantiers-refresh ()
+  "Rafraîchit la liste des chantiers."
+  (setq tabulated-list-entries (mapcar
+                                (lambda (chantier)
+                                  (let ((id (number-to-string (nth 0 chantier)))
+                                        (nom (nth 1 chantier))
+                                        (adresse (nth 2 chantier))
+                                        (date-debut (nth 3 chantier))
+                                        (statut (nth 5 chantier)))
+                                    (list id (vector id nom adresse date-debut statut))))
+                                (engins-liste-chantiers)))
+  (tabulated-list-print t))
+
+(add-hook 'engins-liste-chantiers-mode-hook 'hl-line-mode)
+
+
+
+
+
 
 (defun engins-ui-ajouter-engin ()
   "Interface pour ajouter un nouvel engin."
