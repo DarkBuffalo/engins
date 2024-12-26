@@ -2,6 +2,9 @@
 #+author: DarkBuffalo
 #+language: fr
 
+#+caption: Header of pdf
+#+attr_latex: :width 300px
+[[file:img/ui.png]]
 
 -----
 
