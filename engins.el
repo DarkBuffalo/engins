@@ -143,6 +143,7 @@
 
 
 
+
 (defun engins-deplacer (engin-id nouveau-chantier-id)
   "Déplace un engin vers un nouveau chantier."
   (let ((db (sqlite-open engins-db)))
@@ -188,7 +189,7 @@
   (widget-insert "  ")
   (widget-create 'push-button
                  :notify (lambda (&rest _ignore)
-                           (call-interactively 'engins-ui-liste-engins-chantier))
+                           (engins-ui-liste-engins-chantier))
                  "Engins par Chantier")
   
   (use-local-map widget-keymap)
@@ -261,46 +262,144 @@
 
 
 ;;; Engins via tabulated-list-mode
-(defun engins-ui-liste-engins-chantier (chantier-id)
-  "Affiche la liste des engins en utilisant `tabulated-list-mode`."
-  (interactive "nID du chantier: ")
-  (let ((buffer (get-buffer-create "*Liste Engins par Chantier*")))
-    (with-current-buffer buffer
-      (setq-local engins-current-chantier-id chantier-id)
-      (engins-liste-engins-mode)
-      (engins-liste-engins-refresh))
-    (switch-to-buffer buffer)))
+;; (defun engins-ui-liste-engins-chantier (chantier-id)
+;;   "Affiche la liste des engins en utilisant `tabulated-list-mode`."
+;;   (interactive "nID du chantier: ")
+;;   (let ((buffer (get-buffer-create "*Liste Engins par Chantier*")))
+;;     (with-current-buffer buffer
+;;       (setq-local engins-current-chantier-id chantier-id)
+;;       (message "Engins chantier ID: %d" engins-current-chantier-id) ;; Débogage
+;;       (engins-liste-engins-mode)
+;;       (engins-liste-engins-refresh))
+;;     (switch-to-buffer buffer)))
 
+(defun engins-get-chantier-id ()
+  "Permet à l'utilisateur de sélectionner un chantier et retourne son ID."
+  (let* ((chantiers (engins-liste-chantiers))
+         (chantier-names (mapcar (lambda (c) 
+                                  (format "%d: %s" (nth 0 c) (nth 1 c))) 
+                                chantiers))
+         (chantier-choice (completing-read "Sélectionnez un chantier: " 
+                                         chantier-names nil t))
+         (id-str (car (split-string chantier-choice ":")))
+         (chantier-id (if (and id-str (not (string= id-str "")))
+                         (string-to-number id-str)
+                       nil)))
+    (message "Chantiers disponibles: %S" chantier-names)
+    (message "Choix sélectionné: %S" chantier-choice)
+    (message "ID extrait: %S" chantier-id)
+    chantier-id))
+
+;; (defun engins-ui-liste-engins-chantier ()
+;;   "Affiche la liste des engins en utilisant `tabulated-list-mode`."
+;;   (interactive)
+;;   (let ((chantier-id (engins-get-chantier-id)))
+;;     (setq engins-current-chantier-id chantier-id)
+;;     (if (not engins-current-chantier-id)
+;;         (progn
+;;           (message "Erreur : Chantier ID est nil")
+;;           (return))
+;;       (let ((buffer (get-buffer-create "*Liste Engins par Chantier*")))
+;;         (with-current-buffer buffer
+;;           (setq-local engins-current-chantier-id chantier-id)
+;;           (engins-liste-engins-mode)
+;;           (engins-liste-engins-refresh))
+;;         (switch-to-buffer buffer)))))
+
+
+;; (defun engins-ui-liste-engins-chantier ()
+;;   "Affiche la liste des engins en utilisant `tabulated-list-mode`."
+;;   (interactive)
+;;   (let ((chantier-id (engins-get-chantier-id)))
+;;     (message "ID du chantier sélectionné: %S" chantier-id)
+;;     (if (and chantier-id (> chantier-id 0))
+;;         (let ((buffer (get-buffer-create "*Liste Engins par Chantier*")))
+;;           (with-current-buffer buffer
+;;             (setq-local engins-current-chantier-id chantier-id)
+;;             (message "ID du chantier dans le buffer: %S" engins-current-chantier-id)
+;;             (engins-liste-engins-mode)
+;;             (engins-liste-engins-refresh))
+;;           (switch-to-buffer buffer))
+;;       (message "Veuillez sélectionner un chantier valide."))))
+
+
+;; Définir la variable comme buffer-local par défaut
 (defvar-local engins-current-chantier-id nil
   "ID du chantier actuellement affiché dans la liste des engins.")
 
 (define-derived-mode engins-liste-engins-mode tabulated-list-mode "Liste Engins"
   "Mode majeur pour lister les engins d'un chantier."
   (setq tabulated-list-format [("ID" 5 t)
-                             ("Type" 15 t)
-                             ("Référence" 15 t)
-                             ("Prix/Jour" 10 t)
-                             ("Disponible" 10 t)
-                             ("Chantier" 20 t)])
+                              ("Type" 15 t)
+                              ("Référence" 15 t)
+                              ("Prix/Jour" 10 t)
+                              ("Disponible" 10 t)
+                              ("Chantier" 20 t)])
   (setq tabulated-list-padding 2)
   (setq tabulated-list-sort-key (cons "ID" nil))
+  ;; Supprimer le hook précédent pour éviter les duplications
+  (remove-hook 'tabulated-list-revert-hook 'engins-liste-engins-refresh t)
+  ;; Ajouter le nouveau hook
   (add-hook 'tabulated-list-revert-hook 'engins-liste-engins-refresh nil t)
   (tabulated-list-init-header))
 
+;; (defun engins-liste-engins-refresh ()
+;;   "Rafraîchit la liste des engins."
+;;   (if (not engins-current-chantier-id)
+;;       (message "Erreur : Chantier ID est nil")
+;;     (progn
+;;       (setq tabulated-list-entries
+;;             (mapcar
+;;              (lambda (engin)
+;;                (let* ((id (number-to-string (nth 0 engin)))
+;;                       (type (nth 1 engin))
+;;                       (reference (nth 2 engin))
+;;                       (prix-journalier (nth 3 engin))
+;;                       (prix (if (numberp prix-journalier)
+;;                                 (format "%.2f€" prix-journalier)
+;;                               "N/A")) ; Si prix_journalier n'est pas un nombre
+;;                       (disponible (if (= (nth 5 engin) 1) "Oui" "Non"))
+;;                       (chantier (or (nth 6 engin) "Non assigné")))
+;;                  (list id (vector id type reference prix disponible chantier))))
+;;              (let ((engins (engins-liste-par-chantier engins-current-chantier-id)))
+;;                (if (null engins)
+;;                    (message "Aucun engin trouvé pour ce chantier.")
+;;                  engins)))
+;;       (tabulated-list-print t)))))
+
+(defun engins-ui-liste-engins-chantier ()
+  "Affiche la liste des engins en utilisant `tabulated-list-mode`."
+  (interactive)
+  (let* ((chantier-id (engins-get-chantier-id))
+         (buffer (get-buffer-create "*Liste Engins par Chantier*")))
+    (with-current-buffer buffer
+      (engins-liste-engins-mode)
+      (setq engins-current-chantier-id chantier-id) ; Définir l'ID avant le refresh
+      (tabulated-list-revert)
+      (message "ID défini dans le buffer: %S" engins-current-chantier-id))
+    (switch-to-buffer buffer)))
+
 (defun engins-liste-engins-refresh ()
   "Rafraîchit la liste des engins."
-  (setq tabulated-list-entries 
-        (mapcar
-         (lambda (engin)
-           (let* ((id (number-to-string (nth 0 engin)))
-                  (type (nth 1 engin))
-                  (reference (nth 2 engin))
-                  (prix (format "%.2f€" (nth 3 engin)))
-                  (disponible (if (= (nth 5 engin) 1) "Oui" "Non"))
-                  (chantier (or (nth 6 engin) "Non assigné")))
-             (list id (vector id type reference prix disponible chantier))))
-         (engins-liste-par-chantier engins-current-chantier-id)))
-  (tabulated-list-print t))
+  (let ((id engins-current-chantier-id)) ; Capture l'ID localement
+    (message "Rafraîchissement avec ID: %S" id)
+    (when id
+      (let ((engins (engins-liste-par-chantier id)))
+        (message "Engins trouvés: %S" engins)
+        (setq tabulated-list-entries
+              (mapcar (lambda (engin)
+                       (let* ((id (number-to-string (nth 0 engin)))
+                              (type (nth 1 engin))
+                              (reference (nth 2 engin))
+                              (prix-journalier (nth 3 engin))
+                              (prix (if (numberp prix-journalier)
+                                      (format "%.2f€" prix-journalier)
+                                    "N/A"))
+                              (disponible (if (= (nth 5 engin) 1) "Oui" "Non"))
+                              (chantier (or (nth 6 engin) "Non assigné")))
+                         (list id (vector id type reference prix disponible chantier))))
+                     engins))
+        (tabulated-list-print t)))))
 
 (add-hook 'engins-liste-engins-mode-hook 'hl-line-mode)
 
@@ -344,7 +443,7 @@
 
 
 
-;; Interface utilisateur pour ajouter une location
+;;Interface utilisateur pour ajouter une location
 (defun engins-ui-ajouter-location ()
   "Interface pour ajouter une nouvelle location."
   (let* ((chantiers (mapcar (lambda (c) (format "%d: %s" (nth 0 c) (nth 1 c)))
@@ -368,6 +467,7 @@
 
 
 
+
 ;;;###autoload
 (defun engins-setup ()
   "Configure l'application de gestion des engins."
@@ -375,5 +475,16 @@
   (engins-init-db)
   (engins-ui))
 
+;; Ajout d'une fonction de vérification de la base de données
+;;;###autoload
+(defun engins-verify-db ()
+  "Vérifie l'état de la base de données et retourne les informations de débogage."
+  (interactive)
+  (let ((db (sqlite-open engins-db)))
+    (message "Contenu de la table chantiers:")
+    (message "%S" (sqlite-select db "SELECT * FROM chantiers"))
+    (message "Contenu de la table engins:")
+    (message "%S" (sqlite-select db "SELECT * FROM engins"))
+    (sqlite-close db)))
 
 ;;; engins.el ends here
