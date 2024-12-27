@@ -181,17 +181,17 @@
                  :notify (lambda (&rest _ignore)
                            (engins-ui-liste-chantiers))
                  "Liste des Chantiers")
-  (widget-insert "  ")
+  (widget-insert "\n\n")
   (widget-create 'push-button
                  :notify (lambda (&rest _ignore)
                            (engins-ui-ajouter-engin))
                  "Ajouter un Engin")
-  (widget-insert "  ")
+  (widget-insert "\n\n")
   (widget-create 'push-button
                  :notify (lambda (&rest _ignore)
                            (engins-ui-ajouter-location))
                  "Ajouter Location")
-  (widget-insert "  ")
+  (widget-insert "\n\n")
   (widget-create 'push-button
                  :notify (lambda (&rest _ignore)
                            (engins-ui-liste-engins-chantier))
@@ -208,7 +208,6 @@
         (date-debut (org-read-date nil nil nil "Date de démmarage ?")))
     (engins-ajouter-chantier nom adresse date-debut)
     (message "Chantier ajouté avec succès !")))
-
 
 
 ;;; Chantier via tabulated-list-mode
@@ -292,10 +291,12 @@
 (define-derived-mode engins-liste-engins-mode tabulated-list-mode "Liste Engins"
   "Mode majeur pour lister les engins d'un chantier."
   (setq tabulated-list-format [("ID" 5 t)
-                              ("Type" 15 t)
-                              ("Référence" 15 t)
-                              ("Prix/Jour" 10 t)
-                              ("Chantier" 20 t)])
+                               ("Type" 15 t)
+                               ("Référence" 15 t)
+                               ("Prix/Jour" 10 t)
+                               ("Chantier" 20 t)
+                               ("Date début" 12 t)
+                               ("Date fin" 12 t)])
   (setq tabulated-list-padding 2)
   (setq tabulated-list-sort-key (cons "ID" nil))
   (remove-hook 'tabulated-list-revert-hook 'engins-liste-engins-refresh t)
@@ -317,7 +318,7 @@
 
 
 (defun engins-liste-engins-refresh ()
-  "Rafraîchit la liste des engins."
+  "Rafraîchit la liste des engins avec les dates de début et de fin de location."
   (let ((id engins-current-chantier-id))
     (message "Rafraîchissement avec ID: %S" id)
     (when id
@@ -325,23 +326,40 @@
         (message "Engins trouvés: %S" engins)
         (setq tabulated-list-entries
               (mapcar (lambda (engin)
-                       (let* ((id (or (nth 0 engin) ""))
-                             (type (or (nth 1 engin) ""))
-                             (reference (or (nth 2 engin) ""))
-                             (prix-journalier (nth 3 engin))
-                             (prix (if (numberp prix-journalier)
-                                     (format "%.2f€" prix-journalier)
-                                   "N/A"))
-                             (chantier-nom (or (nth 5 engin) "Non assigné")))
-                         (list (number-to-string id)
-                               (vector 
-                                (number-to-string id)
-                                (if (stringp type) type "")
-                                (if (stringp reference) reference "")
-                                prix
-                                (if (stringp chantier-nom) chantier-nom "Non assigné")))))
-                     engins))
+                        (let* ((id (or (nth 0 engin) ""))
+                               (type (or (nth 1 engin) ""))
+                               (reference (or (nth 2 engin) ""))
+                               (prix-journalier (nth 3 engin))
+                               (prix (if (numberp prix-journalier)
+                                        (format "%.2f€" prix-journalier)
+                                      "N/A"))
+                               (chantier-nom (or (nth 5 engin) "Non assigné"))
+                               ;; Récupérer les dates de location depuis la base de données
+                               (location-info (sqlite-select
+                                               (sqlite-open engins-db)
+                                               "SELECT date_debut, date_fin FROM locations WHERE engin_id = ? AND chantier_id = ?"
+                                               (vector (nth 0 engin) engins-current-chantier-id)))
+                               (date-debut (if location-info (nth 0 location-info) "Non définie"))
+                               (date-fin (if location-info (nth 1 location-info) "Non définie")))
+                          ;; On crée la liste avec les bonnes valeurs
+                          (list (number-to-string id)
+                                (vector
+                                 (number-to-string id)
+                                 (if (stringp type) type "")
+                                 (if (stringp reference) reference "")
+                                 prix
+                                 (if (stringp chantier-nom) chantier-nom "Non assigné")
+                                 date-debut
+                                 date-fin))))
+                      engins)))
+        ;; Afficher les résultats dans le buffer
         (tabulated-list-print t)))))
+
+
+
+
+
+
 
 
 (add-hook 'engins-liste-engins-mode-hook 'hl-line-mode)
