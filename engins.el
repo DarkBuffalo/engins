@@ -80,7 +80,6 @@
         reference TEXT NOT NULL UNIQUE,
         prix_journalier REAL NOT NULL,
         chantier_id INTEGER,
-        disponible BOOLEAN DEFAULT 1,
         FOREIGN KEY (chantier_id) REFERENCES chantiers(id)
       )")
     
@@ -89,7 +88,7 @@
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         engin_id INTEGER NOT NULL,
         chantier_id INTEGER NOT NULL,
-        client TEXT NOT NULL,
+        agence TEXT NOT NULL,
         date_debut DATE NOT NULL,
         date_fin DATE NOT NULL,
         prix_total REAL NOT NULL,
@@ -126,22 +125,41 @@
                    (vector type reference prix-journalier chantier-id))
     (sqlite-close db)))
 
+;; (defun engins-liste-par-chantier (chantier-id)
+;;   "Retourne la liste des engins associés à un chantier donné."
+;;   (let ((db (sqlite-open engins-db)))
+;;     (message "Base de données ouverte : %S" db)
+;;     (message "Chantier ID utilisé : %S" chantier-id)
+;;     (let ((resultat (sqlite-select db 
+;;                                  "SELECT e.*, c.nom as chantier_nom 
+;;                                   FROM engins e 
+;;                                   LEFT JOIN chantiers c ON e.chantier_id = c.id 
+;;                                   WHERE e.chantier_id = ?"
+;;                                  (vector chantier-id))))
+;;       (message "Résultat SQL : %S" resultat)
+;;       (sqlite-close db)
+;;       resultat)))
+
 (defun engins-liste-par-chantier (chantier-id)
   "Retourne la liste des engins associés à un chantier donné."
   (let ((db (sqlite-open engins-db)))
     (message "Base de données ouverte : %S" db)
     (message "Chantier ID utilisé : %S" chantier-id)
     (let ((resultat (sqlite-select db 
-                                   "SELECT e.*, c.nom as chantier_nom 
-                                    FROM engins e 
-                                    LEFT JOIN chantiers c ON e.chantier_id = c.id 
-                                    WHERE e.chantier_id = ?"
-                                   (vector chantier-id))))
+                                 "SELECT 
+                                    e.id,
+                                    e.type,
+                                    e.reference,
+                                    e.prix_journalier,
+                                    e.chantier_id,
+                                    c.nom as chantier_nom
+                                  FROM engins e 
+                                  LEFT JOIN chantiers c ON e.chantier_id = c.id 
+                                  WHERE e.chantier_id = ?"
+                                 (vector chantier-id))))
       (message "Résultat SQL : %S" resultat)
       (sqlite-close db)
       resultat)))
-
-
 
 
 (defun engins-deplacer (engin-id nouveau-chantier-id)
@@ -245,9 +263,6 @@
 
 
 
-
-
-
 (defun engins-ui-ajouter-engin ()
   "Interface pour ajouter un nouvel engin."
   (let* ((chantiers (engins-liste-chantiers))
@@ -285,22 +300,31 @@
 (defvar-local engins-current-chantier-id nil
   "ID du chantier actuellement affiché dans la liste des engins.")
 
+;; (define-derived-mode engins-liste-engins-mode tabulated-list-mode "Liste Engins"
+;;   "Mode majeur pour lister les engins d'un chantier."
+;;   (setq tabulated-list-format [("ID" 5 t)
+;;                               ("Type" 15 t)
+;;                               ("Référence" 15 t)
+;;                               ("Prix/Jour" 10 t)
+;;                               ("Chantier" 20 t)])
+;;   (setq tabulated-list-padding 2)
+;;   (setq tabulated-list-sort-key (cons "ID" nil))
+;;   (remove-hook 'tabulated-list-revert-hook 'engins-liste-engins-refresh t)
+;;   (add-hook 'tabulated-list-revert-hook 'engins-liste-engins-refresh nil t)
+;;   (tabulated-list-init-header))
+
 (define-derived-mode engins-liste-engins-mode tabulated-list-mode "Liste Engins"
   "Mode majeur pour lister les engins d'un chantier."
   (setq tabulated-list-format [("ID" 5 t)
                               ("Type" 15 t)
                               ("Référence" 15 t)
                               ("Prix/Jour" 10 t)
-                              ("Disponible" 10 t)
                               ("Chantier" 20 t)])
   (setq tabulated-list-padding 2)
   (setq tabulated-list-sort-key (cons "ID" nil))
-  ;; Supprimer le hook précédent pour éviter les duplications
   (remove-hook 'tabulated-list-revert-hook 'engins-liste-engins-refresh t)
-  ;; Ajouter le nouveau hook
   (add-hook 'tabulated-list-revert-hook 'engins-liste-engins-refresh nil t)
   (tabulated-list-init-header))
-
 
 
 (defun engins-ui-liste-engins-chantier ()
@@ -315,50 +339,72 @@
       (message "ID défini dans le buffer: %S" engins-current-chantier-id))
     (switch-to-buffer buffer)))
 
+;; (defun engins-liste-engins-refresh ()
+;;   "Rafraîchit la liste des engins."
+;;   (let ((id engins-current-chantier-id))
+;;     (message "Rafraîchissement avec ID: %S" id)
+;;     (when id
+;;       (let ((engins (engins-liste-par-chantier id)))
+;;         (message "Engins trouvés: %S" engins)
+;;         (setq tabulated-list-entries
+;;               (mapcar (lambda (engin)
+;;                        (let* ((id (number-to-string (nth 0 engin)))
+;;                              (type (nth 1 engin))
+;;                              (reference (nth 2 engin))
+;;                              (prix-journalier (nth 3 engin))
+;;                              (prix (if (numberp prix-journalier)
+;;                                      (format "%.2f€" prix-journalier)
+;;                                    "N/A"))
+;;                              (chantier-nom (nth 7 engin))) ; Le nom du chantier est maintenant à l'index 7
+;;                          (list id (vector id type reference prix chantier-nom))))
+;;                      engins))
+;;         (tabulated-list-print t)))))
+
 (defun engins-liste-engins-refresh ()
   "Rafraîchit la liste des engins."
-  (let ((id engins-current-chantier-id)) ; Capture l'ID localement
+  (let ((id engins-current-chantier-id))
     (message "Rafraîchissement avec ID: %S" id)
     (when id
       (let ((engins (engins-liste-par-chantier id)))
         (message "Engins trouvés: %S" engins)
         (setq tabulated-list-entries
               (mapcar (lambda (engin)
-                       (let* ((id (number-to-string (nth 0 engin)))
-                              (type (nth 1 engin))
-                              (reference (nth 2 engin))
-                              (prix-journalier (nth 3 engin))
-                              (prix (if (numberp prix-journalier)
-                                      (format "%.2f€" prix-journalier)
-                                    "N/A"))
-                              (disponible (if (= (nth 5 engin) 1) "Oui" "Non"))
-                              (chantier (or (nth 6 engin) "Non assigné")))
-                         (list id (vector id type reference prix disponible chantier))))
+                       (let* ((id (or (nth 0 engin) ""))
+                             (type (or (nth 1 engin) ""))
+                             (reference (or (nth 2 engin) ""))
+                             (prix-journalier (nth 3 engin))
+                             (prix (if (numberp prix-journalier)
+                                     (format "%.2f€" prix-journalier)
+                                   "N/A"))
+                             (chantier-nom (or (nth 5 engin) "Non assigné")))
+                         (list (number-to-string id)
+                               (vector 
+                                (number-to-string id)
+                                (if (stringp type) type "")
+                                (if (stringp reference) reference "")
+                                prix
+                                (if (stringp chantier-nom) chantier-nom "Non assigné")))))
                      engins))
         (tabulated-list-print t)))))
+
 
 (add-hook 'engins-liste-engins-mode-hook 'hl-line-mode)
 
 
 ;;; Gestion des locations dans engins.el
 
-(defun engins-ajouter-location (engin-id chantier-id client date-debut date-fin)
+(defun engins-ajouter-location (engin-id chantier-id agence date-debut date-fin)
   "Ajoute une nouvelle location pour un engin."
   (let* ((db (sqlite-open engins-db))
          (prix-journalier (caar (sqlite-select db "SELECT prix_journalier FROM engins WHERE id = ?" (vector engin-id))))
-         ;; Conversion des dates en objets temps
          (date-debut-time (date-to-time date-debut))
          (date-fin-time (date-to-time date-fin))
-         ;; Calcul du nombre de jours (différence en jours entre les deux dates)
          (jours (max 1 (- (time-to-days date-fin-time) (time-to-days date-debut-time))))
          (prix-total (* prix-journalier jours)))
-    ;; Insertion dans la base de données
     (sqlite-execute db
-                    "INSERT INTO locations (engin_id, chantier_id, client, date_debut, date_fin, prix_total) \
+                    "INSERT INTO locations (engin_id, chantier_id, agence, date_debut, date_fin, prix_total) \
                      VALUES (?, ?, ?, ?, ?, ?)"
-                    (vector engin-id chantier-id client date-debut date-fin prix-total))
-    ;; Mise à jour de la disponibilité de l'engin
-    (sqlite-execute db "UPDATE engins SET disponible = 0 WHERE id = ?" (vector engin-id))
+                    (vector engin-id chantier-id agence date-debut date-fin prix-total))
     (sqlite-close db)
     (message "Location ajoutée avec succès !")))
 
@@ -370,7 +416,7 @@
   "Retourne la liste de toutes les locations."
   (let ((db (sqlite-open engins-db)))
     (let ((resultat (sqlite-select db \
-                                   "SELECT l.id, e.type, e.reference, c.nom, l.client, l.date_debut, l.date_fin, l.prix_total, l.statut \
+                                   "SELECT l.id, e.type, e.reference, c.nom, l.agence, l.date_debut, l.date_fin, l.prix_total, l.statut \
                                     FROM locations l \
                                     JOIN engins e ON l.engin_id = e.id \
                                     JOIN chantiers c ON l.chantier_id = c.id")))
@@ -390,15 +436,10 @@
                          (engins-liste-par-chantier chantier-id)))
          (engin-choice (completing-read "Engin: " engins))
          (engin-id (string-to-number (car (split-string engin-choice ":"))))
-         (client (read-string "Client: "))
+         (agence (read-string "Agence: "))
          (date-debut (org-read-date nil nil nil "Date de début ?"))
          (date-fin (org-read-date nil nil nil "Date de fin ?")))
-    (message "Chantier sélectionné : %S" chantier-choice)
-    (message "Chantier ID extrait : %S" chantier-id)
-
-    (engins-ajouter-location engin-id chantier-id client date-debut date-fin)))
-
-
+    (engins-ajouter-location engin-id chantier-id agence date-debut date-fin)))
 
 
 
