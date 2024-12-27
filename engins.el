@@ -125,20 +125,7 @@
                    (vector type reference prix-journalier chantier-id))
     (sqlite-close db)))
 
-;; (defun engins-liste-par-chantier (chantier-id)
-;;   "Retourne la liste des engins associés à un chantier donné."
-;;   (let ((db (sqlite-open engins-db)))
-;;     (message "Base de données ouverte : %S" db)
-;;     (message "Chantier ID utilisé : %S" chantier-id)
-;;     (let ((resultat (sqlite-select db 
-;;                                  "SELECT e.*, c.nom as chantier_nom 
-;;                                   FROM engins e 
-;;                                   LEFT JOIN chantiers c ON e.chantier_id = c.id 
-;;                                   WHERE e.chantier_id = ?"
-;;                                  (vector chantier-id))))
-;;       (message "Résultat SQL : %S" resultat)
-;;       (sqlite-close db)
-;;       resultat)))
+
 
 (defun engins-liste-par-chantier (chantier-id)
   "Retourne la liste des engins associés à un chantier donné."
@@ -300,18 +287,7 @@
 (defvar-local engins-current-chantier-id nil
   "ID du chantier actuellement affiché dans la liste des engins.")
 
-;; (define-derived-mode engins-liste-engins-mode tabulated-list-mode "Liste Engins"
-;;   "Mode majeur pour lister les engins d'un chantier."
-;;   (setq tabulated-list-format [("ID" 5 t)
-;;                               ("Type" 15 t)
-;;                               ("Référence" 15 t)
-;;                               ("Prix/Jour" 10 t)
-;;                               ("Chantier" 20 t)])
-;;   (setq tabulated-list-padding 2)
-;;   (setq tabulated-list-sort-key (cons "ID" nil))
-;;   (remove-hook 'tabulated-list-revert-hook 'engins-liste-engins-refresh t)
-;;   (add-hook 'tabulated-list-revert-hook 'engins-liste-engins-refresh nil t)
-;;   (tabulated-list-init-header))
+
 
 (define-derived-mode engins-liste-engins-mode tabulated-list-mode "Liste Engins"
   "Mode majeur pour lister les engins d'un chantier."
@@ -339,26 +315,6 @@
       (message "ID défini dans le buffer: %S" engins-current-chantier-id))
     (switch-to-buffer buffer)))
 
-;; (defun engins-liste-engins-refresh ()
-;;   "Rafraîchit la liste des engins."
-;;   (let ((id engins-current-chantier-id))
-;;     (message "Rafraîchissement avec ID: %S" id)
-;;     (when id
-;;       (let ((engins (engins-liste-par-chantier id)))
-;;         (message "Engins trouvés: %S" engins)
-;;         (setq tabulated-list-entries
-;;               (mapcar (lambda (engin)
-;;                        (let* ((id (number-to-string (nth 0 engin)))
-;;                              (type (nth 1 engin))
-;;                              (reference (nth 2 engin))
-;;                              (prix-journalier (nth 3 engin))
-;;                              (prix (if (numberp prix-journalier)
-;;                                      (format "%.2f€" prix-journalier)
-;;                                    "N/A"))
-;;                              (chantier-nom (nth 7 engin))) ; Le nom du chantier est maintenant à l'index 7
-;;                          (list id (vector id type reference prix chantier-nom))))
-;;                      engins))
-;;         (tabulated-list-print t)))))
 
 (defun engins-liste-engins-refresh ()
   "Rafraîchit la liste des engins."
@@ -440,8 +396,6 @@
          (date-debut (org-read-date nil nil nil "Date de début ?"))
          (date-fin (org-read-date nil nil nil "Date de fin ?")))
     (engins-ajouter-location engin-id chantier-id agence date-debut date-fin)))
-
-
 
 
 
