@@ -41,6 +41,12 @@
 (require 'widget)
 (require 'tabulated-list)
 
+
+
+;; Définition de la base de données
+(defvar engins-db (expand-file-name "engins.db" user-emacs-directory)
+  "Chemin vers la base de données SQLite.")
+
 ;; Fonction de réinitialisation de la base
 (defun engins-reset-db ()
   "Supprime et réinitialise la base de données."
@@ -48,10 +54,6 @@
   (when (file-exists-p engins-db)
     (delete-file engins-db))
   (engins-init-db))
-
-;; Définition de la base de données
-(defvar engins-db (expand-file-name "engins.db" user-emacs-directory)
-  "Chemin vers la base de données SQLite.")
 
 (defun engins-init-db ()
   "Initialise la base de données avec les tables nécessaires."
@@ -111,6 +113,7 @@
   (let ((db (sqlite-open engins-db)))
     (let ((resultat (sqlite-select db "SELECT * FROM chantiers WHERE statut = 'en_cours'")))
       (sqlite-close db)
+      
       resultat)))
 
 ;; Fonctions CRUD pour les engins
@@ -124,24 +127,32 @@
     (sqlite-close db)))
 
 (defun engins-liste-par-chantier (chantier-id)
-  "Retourne la liste des engins d'un chantier spécifique."
+  "Retourne la liste des engins associés à un chantier donné."
   (let ((db (sqlite-open engins-db)))
+    (message "Base de données ouverte : %S" db)
+    (message "Chantier ID utilisé : %S" chantier-id)
     (let ((resultat (sqlite-select db 
-                                 "SELECT e.*, c.nom as chantier_nom 
-                                  FROM engins e 
-                                  LEFT JOIN chantiers c ON e.chantier_id = c.id 
-                                  WHERE e.chantier_id = ?"
-                                 (vector chantier-id))))
+                                   "SELECT e.*, c.nom as chantier_nom 
+                                    FROM engins e 
+                                    LEFT JOIN chantiers c ON e.chantier_id = c.id 
+                                    WHERE e.chantier_id = ?"
+                                   (vector chantier-id))))
+      (message "Résultat SQL : %S" resultat)
       (sqlite-close db)
       resultat)))
+
+
 
 (defun engins-deplacer (engin-id nouveau-chantier-id)
   "Déplace un engin vers un nouveau chantier."
   (let ((db (sqlite-open engins-db)))
     (sqlite-execute db
-                   "UPDATE engins SET chantier_id = ? WHERE id = ?"
-                   (vector nouveau-chantier-id engin-id))
+                    "UPDATE engins SET chantier_id = ? WHERE id = ?"
+                    (vector nouveau-chantier-id engin-id))
     (sqlite-close db)))
+
+
+
 
 ;; Interface utilisateur
 ;;;###autoload
@@ -157,22 +168,27 @@
   ;; Menu principal
   (widget-create 'push-button
                  :notify (lambda (&rest _ignore)
-                          (engins-ui-ajouter-chantier))
+                           (engins-ui-ajouter-chantier))
                  "Nouveau Chantier")
   (widget-insert "  ")
   (widget-create 'push-button
                  :notify (lambda (&rest _ignore)
-                          (engins-ui-liste-chantiers))
+                           (engins-ui-liste-chantiers))
                  "Liste des Chantiers")
   (widget-insert "  ")
   (widget-create 'push-button
                  :notify (lambda (&rest _ignore)
-                          (engins-ui-ajouter-engin))
+                           (engins-ui-ajouter-engin))
                  "Ajouter un Engin")
   (widget-insert "  ")
   (widget-create 'push-button
                  :notify (lambda (&rest _ignore)
-                          (call-interactively 'engins-ui-liste-engins-chantier))
+                           (engins-ui-ajouter-location))
+                 "Ajouter Location")
+  (widget-insert "  ")
+  (widget-create 'push-button
+                 :notify (lambda (&rest _ignore)
+                           (call-interactively 'engins-ui-liste-engins-chantier))
                  "Engins par Chantier")
   
   (use-local-map widget-keymap)
@@ -186,10 +202,6 @@
         (date-debut (org-read-date nil nil nil "Date de démmarage ?")))
     (engins-ajouter-chantier nom adresse date-debut)
     (message "Chantier ajouté avec succès !")))
-
-
-
-
 
 
 
@@ -247,20 +259,114 @@
     (engins-ajouter type reference prix chantier-id)
     (message "Engin ajouté avec succès !")))
 
+
+;;; Engins via tabulated-list-mode
 (defun engins-ui-liste-engins-chantier (chantier-id)
-  "Affiche la liste des engins pour un chantier spécifique."
+  "Affiche la liste des engins en utilisant `tabulated-list-mode`."
   (interactive "nID du chantier: ")
-  (switch-to-buffer "*Liste Engins par Chantier*")
-  (let ((inhibit-read-only t))
-    (erase-buffer))
-  (dolist (engin (engins-liste-par-chantier chantier-id))
-    (insert (format "ID: %d | Type: %s | Réf: %s | Prix: %.2f€ | Chantier: %s\n"
-                   (nth 0 engin)
-                   (nth 1 engin)
-                   (nth 2 engin)
-                   (nth 3 engin)
-                   (nth 6 engin))))
-  (local-set-key (kbd "q") 'kill-buffer))
+  (let ((buffer (get-buffer-create "*Liste Engins par Chantier*")))
+    (with-current-buffer buffer
+      (setq-local engins-current-chantier-id chantier-id)
+      (engins-liste-engins-mode)
+      (engins-liste-engins-refresh))
+    (switch-to-buffer buffer)))
+
+(defvar-local engins-current-chantier-id nil
+  "ID du chantier actuellement affiché dans la liste des engins.")
+
+(define-derived-mode engins-liste-engins-mode tabulated-list-mode "Liste Engins"
+  "Mode majeur pour lister les engins d'un chantier."
+  (setq tabulated-list-format [("ID" 5 t)
+                             ("Type" 15 t)
+                             ("Référence" 15 t)
+                             ("Prix/Jour" 10 t)
+                             ("Disponible" 10 t)
+                             ("Chantier" 20 t)])
+  (setq tabulated-list-padding 2)
+  (setq tabulated-list-sort-key (cons "ID" nil))
+  (add-hook 'tabulated-list-revert-hook 'engins-liste-engins-refresh nil t)
+  (tabulated-list-init-header))
+
+(defun engins-liste-engins-refresh ()
+  "Rafraîchit la liste des engins."
+  (setq tabulated-list-entries 
+        (mapcar
+         (lambda (engin)
+           (let* ((id (number-to-string (nth 0 engin)))
+                  (type (nth 1 engin))
+                  (reference (nth 2 engin))
+                  (prix (format "%.2f€" (nth 3 engin)))
+                  (disponible (if (= (nth 5 engin) 1) "Oui" "Non"))
+                  (chantier (or (nth 6 engin) "Non assigné")))
+             (list id (vector id type reference prix disponible chantier))))
+         (engins-liste-par-chantier engins-current-chantier-id)))
+  (tabulated-list-print t))
+
+(add-hook 'engins-liste-engins-mode-hook 'hl-line-mode)
+
+
+;;; Gestion des locations dans engins.el
+
+(defun engins-ajouter-location (engin-id chantier-id client date-debut date-fin)
+  "Ajoute une nouvelle location pour un engin."
+  (let* ((db (sqlite-open engins-db))
+         (prix-journalier (caar (sqlite-select db "SELECT prix_journalier FROM engins WHERE id = ?" (vector engin-id))))
+         ;; Conversion des dates en objets temps
+         (date-debut-time (date-to-time date-debut))
+         (date-fin-time (date-to-time date-fin))
+         ;; Calcul du nombre de jours (différence en jours entre les deux dates)
+         (jours (max 1 (- (time-to-days date-fin-time) (time-to-days date-debut-time))))
+         (prix-total (* prix-journalier jours)))
+    ;; Insertion dans la base de données
+    (sqlite-execute db
+                    "INSERT INTO locations (engin_id, chantier_id, client, date_debut, date_fin, prix_total) \
+                     VALUES (?, ?, ?, ?, ?, ?)"
+                    (vector engin-id chantier-id client date-debut date-fin prix-total))
+    ;; Mise à jour de la disponibilité de l'engin
+    (sqlite-execute db "UPDATE engins SET disponible = 0 WHERE id = ?" (vector engin-id))
+    (sqlite-close db)
+    (message "Location ajoutée avec succès !")))
+
+
+
+
+;; Fonction pour lister les locations existantes
+(defun engins-liste-locations ()
+  "Retourne la liste de toutes les locations."
+  (let ((db (sqlite-open engins-db)))
+    (let ((resultat (sqlite-select db \
+                                   "SELECT l.id, e.type, e.reference, c.nom, l.client, l.date_debut, l.date_fin, l.prix_total, l.statut \
+                                    FROM locations l \
+                                    JOIN engins e ON l.engin_id = e.id \
+                                    JOIN chantiers c ON l.chantier_id = c.id")))
+      (sqlite-close db)
+      resultat)))
+
+
+
+;; Interface utilisateur pour ajouter une location
+(defun engins-ui-ajouter-location ()
+  "Interface pour ajouter une nouvelle location."
+  (let* ((chantiers (mapcar (lambda (c) (format "%d: %s" (nth 0 c) (nth 1 c)))
+                            (engins-liste-chantiers)))
+         (chantier-choice (completing-read "Chantier: " chantiers))
+         (chantier-id (string-to-number (car (split-string chantier-choice ":"))))
+         (engins (mapcar (lambda (e) (format "%d: %s (%s)" (nth 0 e) (nth 1 e) (nth 2 e)))
+                         (engins-liste-par-chantier chantier-id)))
+         (engin-choice (completing-read "Engin: " engins))
+         (engin-id (string-to-number (car (split-string engin-choice ":"))))
+         (client (read-string "Client: "))
+         (date-debut (org-read-date nil nil nil "Date de début ?"))
+         (date-fin (org-read-date nil nil nil "Date de fin ?")))
+    (message "Chantier sélectionné : %S" chantier-choice)
+    (message "Chantier ID extrait : %S" chantier-id)
+
+    (engins-ajouter-location engin-id chantier-id client date-debut date-fin)))
+
+
+
+
+
 
 ;;;###autoload
 (defun engins-setup ()
